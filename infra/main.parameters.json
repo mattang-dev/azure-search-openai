@@ -6,64 +6,64 @@
       "value": "${AZURE_ENV_NAME}"
     },
     "resourceGroupName": {
-      "value": "${AZURE_RESOURCE_GROUP}"
+      "value": "Mattang-AI"
     },
     "location": {
-      "value": "${AZURE_LOCATION}"
+      "value": "Central US"
     },
     "principalId": {
       "value": "${AZURE_PRINCIPAL_ID}"
     },
     "openAiServiceName": {
-      "value": "${AZURE_OPENAI_SERVICE}"
+      "value": "mattang-azopenai"
     },
     "openAiResourceGroupName": {
-      "value": "${AZURE_OPENAI_RESOURCE_GROUP}"
+      "value": "Mattang-AI"
     },
     "openAiSkuName": {
       "value": "S0"
     },
     "formRecognizerServiceName": {
-      "value": "${AZURE_FORMRECOGNIZER_SERVICE}"
+      "value": "mattang-aiformrecognizer"
     },
     "formRecognizerResourceGroupName": {
-      "value": "${AZURE_FORMRECOGNIZER_RESOURCE_GROUP}"
+      "value": "Mattang-AI"
     },
     "formRecognizerSkuName": {
       "value": "S0"
     },
     "searchIndexName": {
-      "value": "${AZURE_SEARCH_INDEX=gptkbindex}"
+      "value": "${AZURE_SEARCH_INDEX=mdmindex}"
     },
     "searchServiceName": {
-      "value": "${AZURE_SEARCH_SERVICE}"
+      "value": "mtngsearch"
     },
     "searchServiceResourceGroupName": {
-      "value": "${AZURE_SEARCH_SERVICE_RESOURCE_GROUP}"
+      "value": "Mattang-AI"
     },
     "searchServiceLocation": {
-      "value": "${AZURE_SEARCH_SERVICE_LOCATION}"
+      "value": "CentralUS"
     },
     "searchServiceSkuName": {
-      "value": "${AZURE_SEARCH_SERVICE_SKU=standard}"
+      "value": "${AZURE_SEARCH_SERVICE_SKU=basic}"
     },
     "storageAccountName": {
-      "value": "${AZURE_STORAGE_ACCOUNT}"
+      "value": "mtgnaistorage"
     },
     "storageResourceGroupName": {
-      "value": "${AZURE_STORAGE_RESOURCE_GROUP}"
+      "value": "Mattang-AI"
     },
     "storageSkuName": {
       "value": "${AZURE_STORAGE_SKU=Standard_LRS}"
     },
     "chatGptDeploymentName": {
-      "value": "${AZURE_OPENAI_CHATGPT_DEPLOYMENT=chat}"
+      "value": "${AZURE_OPENAI_CHATGPT_DEPLOYMENT=gpt35-16k}"
     },
     "openAiHost":{
       "value": "${OPENAI_HOST=azure}"
     },
     "openAiApiKey": {
-      "value": "${OPENAI_API_KEY}"
+      "value": "b02472254f344b759ecbcec9f5ee610f"
     },
     "openAiApiOrganization": {
       "value": "${OPENAI_ORGANIZATION}"

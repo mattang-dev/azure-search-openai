@@ -168,7 +168,7 @@ def get_document_text(filename):
         form_recognizer_client = DocumentAnalysisClient(
             endpoint=f"https://{args.formrecognizerservice}.cognitiveservices.azure.com/",
             credential=formrecognizer_creds,
-            headers={"x-ms-useragent": "azure-search-chat-demo/1.0.0"},
+            headers={"x-ms-useragent": "azure-search-chat/1.0.0"},
         )
         with open(filename, "rb") as f:
             poller = form_recognizer_client.begin_analyze_document("prebuilt-layout", document=f)

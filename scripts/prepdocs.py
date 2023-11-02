@@ -7,7 +7,8 @@ import os
 import re
 import tempfile
 import time
-
+from datetime import datetime, timezone
+import PyPDF2
 import openai
 import tiktoken
 from azure.ai.formrecognizer import DocumentAnalysisClient
@@ -68,11 +69,16 @@ CACHE_KEY_TOKEN_TYPE = "token_type"
 # Embedding batch support section
 SUPPORTED_BATCH_AOAI_MODEL = {"text-embedding-ada-002": {"token_limit": 8100, "max_batch_size": 16}}
 
+# Get current time in UTC
+now = datetime.now(timezone.utc)
+
+# Get the timestamp
+timestamp = now.timestamp()
 
 def calculate_tokens_emb_aoai(input: str):
     encoding = tiktoken.encoding_for_model(args.openaimodelname)
+    print (encoding)
     return len(encoding.encode(input))
-
 
 def blob_name_from_file_page(filename, page=0):
     if os.path.splitext(filename)[1].lower() == ".pdf":
@@ -89,12 +95,20 @@ def upload_blobs(filename):
     if not blob_container.exists():
         blob_container.create_container()
 
+    def blob_exists(blob_name):
+        blob_client = blob_container.get_blob_client(blob_name)
+        return blob_client.exists()
+
     # if file is PDF split into pages and upload each page as a separate blob
     if os.path.splitext(filename)[1].lower() == ".pdf":
         reader = PdfReader(filename)
         pages = reader.pages
         for i in range(len(pages)):
             blob_name = blob_name_from_file_page(filename, i)
+            if blob_exists(blob_name):
+                if args.verbose:
+                    print(f"\tBlob for page {i} -> {blob_name} already exists, skipping upload.")
+                continue  # Skip the rest of this loop iteration if the blob already exists
             if args.verbose:
                 print(f"\tUploading blob for page {i} -> {blob_name}")
             f = io.BytesIO()
@@ -105,9 +119,12 @@ def upload_blobs(filename):
             blob_container.upload_blob(blob_name, f, overwrite=True)
     else:
         blob_name = blob_name_from_file_page(filename)
+        if blob_exists(blob_name):
+            if args.verbose:
+                print(f"\tBlob {blob_name} already exists, skipping upload.")
+            return  # Exit the function if the blob already exists
         with open(filename, "rb") as data:
             blob_container.upload_blob(blob_name, data, overwrite=True)
-
 
 def remove_blobs(filename):
     if args.verbose:
@@ -132,6 +149,15 @@ def remove_blobs(filename):
 
 
 def table_to_html(table):
+    """
+    Generates an HTML representation of a table.
+
+    Args:
+        table (Table): The table object to convert to HTML.
+
+    Returns:
+        str: The HTML representation of the table.
+    """
     table_html = "<table>"
     rows = [
         sorted([cell for cell in table.cells if cell.row_index == i], key=lambda cell: cell.column_index)
@@ -288,8 +314,32 @@ def filename_to_id(filename):
     filename_hash = base64.b16encode(filename.encode("utf-8")).decode("ascii")
     return f"file-{filename_ascii}-{filename_hash}"
 
+def get_title(filename):
+    # Open the file in read-binary mode
+    with open(filename, 'rb') as file:
+        # Create a PDF file reader object
+        pdf = PyPDF2.PdfReader(file)
+        # Get the title from the document information
+        title = pdf.getDocumentInfo().title
+        # If the title is not available, use the file name
+        if not title:
+            title = os.path.basename(filename)
+    return title
 
-def create_sections(filename, page_map, use_vectors, embedding_deployment: str = None, embedding_model: str = None):
+def get_url(filename):
+    # Create a blob service client
+    blob_service = BlobServiceClient(
+        account_url=f"https://{args.storageaccount}.blob.core.windows.net", credential=storage_creds
+    )
+
+    # Get the blob container client
+    blob_container = blob_service.get_container_client(args.container)
+
+    # Get the URL of the blob
+    url = f"https://{args.storageaccount}.blob.core.windows.net/{args.container}/{filename}"
+    return url
+
+def create_sections(title, url, filename, page_map, use_vectors, embedding_deployment: str = None, embedding_model: str = None):
     file_id = filename_to_id(filename)
     for i, (content, pagenum) in enumerate(split_text(page_map, filename)):
         section = {
@@ -298,6 +348,10 @@ def create_sections(filename, page_map, use_vectors, embedding_deployment: str =
             "category": args.category,
             "sourcepage": blob_name_from_file_page(filename, pagenum),
             "sourcefile": filename,
+            "timestamp": timestamp,
+            "title": title,
+            "url": url
+            
         }
         if use_vectors:
             section["embedding"] = compute_embedding(content, embedding_deployment, embedding_model)
@@ -489,6 +543,121 @@ def refresh_openai_token():
         openai.api_key = token_cred.get_token("https://cognitiveservices.azure.com/.default").token
         open_ai_token_cache[CACHE_KEY_CREATED_TIME] = time.time()
 
+def is_file_indexed(filename):
+    search_client = SearchClient(
+        endpoint=f"https://{args.searchservice}.search.windows.net/", index_name=args.index, credential=search_creds
+    )
+    # Formulate the search query
+    search_query = f"sourcefile eq '{os.path.basename(filename)}'&$count=true"
+    
+    # Execute the search query
+    results = search_client.search(search_text="", filter=search_query, include_total_count=True)
+    
+    # Get the total count of matching documents
+    total_count = results.get_count()
+    
+    print(f"Total count of documents matching '{os.path.basename(filename)}': {total_count}")
+    
+    return total_count > 0
+
+def remove_duplicates(search_client):
+    # Get all documents in the index
+    results = search_client.search(search_text="*")
+
+    # Group documents by sourcefile and sourcepage
+    documents_by_sourcefile_and_sourcepage = {}
+    for result in results:
+        sourcefile = result["sourcefile"]
+        sourcepage = result["sourcepage"]
+        if (sourcefile, sourcepage) not in documents_by_sourcefile_and_sourcepage:
+            documents_by_sourcefile_and_sourcepage[(sourcefile, sourcepage)] = [result]
+        else:
+            # If timestamp is not available, keep only the first document and remove duplicates
+            if "timestamp" not in result or "timestamp" not in documents_by_sourcefile_and_sourcepage[(sourcefile, sourcepage)][0]:
+                continue
+            documents_by_sourcefile_and_sourcepage[(sourcefile, sourcepage)].append(result)
+
+    # For each sourcefile and sourcepage, sort the documents by timestamp if available
+    documents_to_delete = []
+    for (sourcefile, sourcepage), documents in documents_by_sourcefile_and_sourcepage.items():
+        # Sort documents by timestamp if available
+        if "timestamp" in documents[0]:
+            documents.sort(key=lambda doc: doc["timestamp"] if doc["timestamp"] is not None else datetime.min, reverse=True)
+        
+        # Add all but the most recent document to the list of documents to delete
+        for document in documents[1:]:
+            documents_to_delete.append({"@search.action": "delete", "id": document["id"]})
+
+    # If there are no duplicates, print a message and exit
+    if len(documents_to_delete) == 0:
+        print(f"There are no duplicates for {sourcefile}")
+        return
+
+    # Print the IDs of the duplicate documents
+    print("Duplicate document IDs:")
+    for document in documents_to_delete:
+        print(document["id"])
+
+    # Print the number of documents to delete and ask for confirmation
+    print(f"\nFound {len(documents_to_delete)} duplicate documents.")
+    confirmation = input("Do you want to delete these documents? (yes/no) ")
+    if confirmation.lower() == "yes":
+        # Delete the documents
+        search_client.delete_documents(documents_to_delete)
+
+
+
+def get_page_count(filename):
+    # Open the file in read-binary mode
+    with open(filename, 'rb') as file:
+        # Create a PDF file reader object
+        pdf = PyPDF2.PdfReader(file)
+        # Get the number of pages in the PDF
+        total_pages = len(pdf.pages)
+
+    return total_pages
+
+def are_all_pages_indexed(filename, total_pages):
+    search_client = SearchClient(
+        endpoint=f"https://{args.searchservice}.search.windows.net/", index_name=args.index, credential=search_creds
+    )
+    # Formulate the search query
+    search_query = f"sourcefile eq '{os.path.basename(filename)}'"
+
+    # Execute the search query
+    results = search_client.search(search_text="", filter=search_query, include_total_count=True)
+
+    # Get the total count of matching documents
+    indexed_pages = results.get_count()
+    
+    print(f"Total pages: {total_pages}")
+    print(f"Indexed pages: {indexed_pages}")
+
+    return indexed_pages == total_pages + 1  # Account for "page 0"
+
+
+def get_unindexed_pages(filename, total_pages):
+    search_client = SearchClient(
+        endpoint=f"https://{args.searchservice}.search.windows.net/", index_name=args.index, credential=search_creds
+    )
+    # Formulate the search query
+    search_query = f"sourcefile eq '{os.path.basename(filename)}'"
+
+    # Execute the search query
+    results = search_client.search(search_text="", filter=search_query, include_total_count=True)
+
+    # Get a list of all indexed page numbers
+    indexed_page_numbers = [int(result["sourcepage"].split('-')[-1].split('.')[0]) for result in results]
+
+    # Then, get a list of all page numbers
+    all_page_numbers = list(range(0, total_pages))  # Pages start from 0
+
+    # Finally, return a list of page numbers that are not in indexed_page_numbers
+    unindexed_pages = [page for page in all_page_numbers if page not in indexed_page_numbers]
+    
+    print(f"Unindexed pages for {filename}: {unindexed_pages}")
+
+    return unindexed_pages
 
 def read_files(
     path_pattern: str,
@@ -497,24 +666,35 @@ def read_files(
     embedding_deployment: str = None,
     embedding_model: str = None,
 ):
-    """
-    Recursively read directory structure under `path_pattern`
-    and execute indexing for the individual files
-    """
+    # Create a search client
+    search_client = SearchClient(
+        endpoint=f"https://{args.searchservice}.search.windows.net/", index_name=args.index, credential=search_creds
+    )
     for filename in glob.glob(path_pattern):
         if args.verbose:
             print(f"Processing '{filename}'")
+        
         if args.remove:
             remove_blobs(filename)
             remove_from_index(filename)
         else:
-            if os.path.isdir(filename):
+            total_pages = get_page_count(filename)
+            unindexed_pages = get_unindexed_pages(filename, total_pages)
+            if not unindexed_pages:
+                print(f"All pages from {filename} are already indexed, skipping.")
+                 # Remove any duplicate documents for the file
+                remove_duplicates(search_client)
+                continue
+            elif os.path.isdir(filename):
+                # Recursively read subdirectories
                 read_files(filename + "/*", use_vectors, vectors_batch_support)
                 continue
             try:
                 if not args.skipblobs:
                     upload_blobs(filename)
+                # Get the document text for the file
                 page_map = get_document_text(filename)
+                # Create sections for the file
                 sections = create_sections(
                     os.path.basename(filename),
                     page_map,
@@ -522,12 +702,14 @@ def read_files(
                     embedding_deployment,
                     embedding_model,
                 )
+                # Update embeddings in batch if available
                 if use_vectors and vectors_batch_support:
                     sections = update_embeddings_in_batch(sections)
-                index_sections(os.path.basename(filename), sections)
+
+                # Index the sections for the file
+                index_sections(os.path.basename(filename), sections, unindexed_pages)
             except Exception as e:
                 print(f"\tGot an error while reading {filename} -> {e} --> skipping file")
-
 
 def read_adls_gen2_files(
     use_vectors: bool, vectors_batch_support: bool, embedding_deployment: str = None, embedding_model: str = None
@@ -737,7 +919,7 @@ if __name__ == "__main__":
                 openai.api_key = args.openaikey
                 openai.api_type = "azure"
             openai.api_base = f"https://{args.openaiservice}.openai.azure.com"
-            openai.api_version = "2023-05-15"
+            openai.api_version = "2023-07-01-preview"
         else:
             print("using normal openai")
             openai.api_key = args.openaikey

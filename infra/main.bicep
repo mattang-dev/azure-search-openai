@@ -48,11 +48,15 @@ param openAiSkuName string = 'S0'
 param openAiApiKey string = ''
 param openAiApiOrganization string = ''
 
-param formRecognizerServiceName string = ''
-param formRecognizerResourceGroupName string = ''
-param formRecognizerResourceGroupLocation string = location
+// param formRecognizerServiceName string = ''
+// param formRecognizerResourceGroupName string = ''
+// param formRecognizerResourceGroupLocation string = location
+param docIntelligenceServiceName string = ''
+param docIntelligenceResourceGroupName string = ''
+param docIntelligenceResourceGroupLocation string = location
 
-param formRecognizerSkuName string = 'S0'
+// param formRecognizerSkuName string = 'S0'
+param docIntelligenceSkuName string = 'S0'
 
 param chatGptDeploymentName string // Set in main.parameters.json
 param chatGptDeploymentCapacity int = 30
@@ -93,8 +97,11 @@ resource openAiResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' exi
   name: !empty(openAiResourceGroupName) ? openAiResourceGroupName : resourceGroup.name
 }
 
-resource formRecognizerResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(formRecognizerResourceGroupName)) {
-  name: !empty(formRecognizerResourceGroupName) ? formRecognizerResourceGroupName : resourceGroup.name
+// resource formRecognizerResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(formRecognizerResourceGroupName)) {
+//   name: !empty(formRecognizerResourceGroupName) ? formRecognizerResourceGroupName : resourceGroup.name
+// }
+resource docIntelligenceResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(docIntelligenceResourceGroupName)) {
+  name: !empty(docIntelligenceResourceGroupName) ? docIntelligenceResourceGroupName : resourceGroup.name
 }
 
 resource searchServiceResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(searchServiceResourceGroupName)) {
@@ -212,16 +219,25 @@ module openAi 'core/ai/cognitiveservices.bicep' = if (openAiHost == 'azure') {
   }
 }
 
-module formRecognizer 'core/ai/cognitiveservices.bicep' = {
-  name: 'formrecognizer'
-  scope: formRecognizerResourceGroup
+// module formRecognizer 'core/ai/cognitiveservices.bicep' = {
+//   name: 'formrecognizer'
+//   scope: formRecognizerResourceGroup
+module docIntelligence 'core/ai/cognitiveservices.bicep' = {
+  name: 'docintelligence'
+  scope: docIntelligenceResourceGroup
   params: {
-    name: !empty(formRecognizerServiceName) ? formRecognizerServiceName : '${abbrs.cognitiveServicesFormRecognizer}${resourceToken}'
+    name: !empty(docIntelligenceServiceName) ? docIntelligenceServiceName : '${abbrs.cognitiveServicesFormRecognizer}${resourceToken}'
     kind: 'FormRecognizer'
-    location: formRecognizerResourceGroupLocation
+    location: docIntelligenceResourceGroupLocation
     tags: tags
     sku: {
-      name: formRecognizerSkuName
+      name: docIntelligenceSkuName
+    // name: !empty(formRecognizerServiceName) ? formRecognizerServiceName : '${abbrs.cognitiveServicesFormRecognizer}${resourceToken}'
+    // kind: 'FormRecognizer'
+    // location: formRecognizerResourceGroupLocation
+    // tags: tags
+    // sku: {
+      // name: formRecognizerSkuName
     }
   }
 }
@@ -280,9 +296,15 @@ module openAiRoleUser 'core/security/role.bicep' = if (openAiHost == 'azure') {
   }
 }
 
-module formRecognizerRoleUser 'core/security/role.bicep' = {
-  scope: formRecognizerResourceGroup
-  name: 'formrecognizer-role-user'
+// module formRecognizerRoleUser 'core/security/role.bicep' = {
+//   scope: formRecognizerResourceGroup
+//   name: 'formrecognizer-role-user'
+//   params: {
+//     principalId: principalId
+//     roleDefinitionId: 'a97b65f3-24c7-4388-baec-2e87135dc908'
+module docIntelligenceRoleUser 'core/security/role.bicep' = {
+  scope: docIntelligenceResourceGroup
+  name: 'docintelligence-role-user'
   params: {
     principalId: principalId
     roleDefinitionId: 'a97b65f3-24c7-4388-baec-2e87135dc908'
@@ -388,8 +410,10 @@ output AZURE_OPENAI_EMB_DEPLOYMENT string = (openAiHost == 'azure') ? embeddingD
 output OPENAI_API_KEY string = (openAiHost == 'openai') ? openAiApiKey : ''
 output OPENAI_ORGANIZATION string = (openAiHost == 'openai') ? openAiApiOrganization : ''
 
-output AZURE_FORMRECOGNIZER_SERVICE string = formRecognizer.outputs.name
-output AZURE_FORMRECOGNIZER_RESOURCE_GROUP string = formRecognizerResourceGroup.name
+// output AZURE_FORMRECOGNIZER_SERVICE string = formRecognizer.outputs.name
+// output AZURE_FORMRECOGNIZER_RESOURCE_GROUP string = formRecognizerResourceGroup.name
+output AZURE_DOCINTELLIGENCE_SERVICE string = docIntelligence.outputs.name
+output AZURE_DOCINTELLIGENCE_RESOURCE_GROUP string = docIntelligenceResourceGroup.name
 
 output AZURE_SEARCH_INDEX string = searchIndexName
 output AZURE_SEARCH_SERVICE string = searchService.outputs.name

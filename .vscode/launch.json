@@ -22,7 +22,7 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "envFile": "${input:dotEnvFilePath}",
+            "envFile": "${input:dotEnvFilePath}"
         },
         {
             "name": "Frontend: watch",
@@ -34,7 +34,7 @@
                 "run-script",
                 "watch"
             ],
-            "console": "integratedTerminal",
+            "console": "integratedTerminal"
         },
         {
             "name": "Frontend: build",
@@ -46,7 +46,17 @@
                 "run-script",
                 "build"
             ],
-            "console": "integratedTerminal",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Attach to PowerShell",
+            "type": "python",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
+            "justMyCode": false
         }
     ],
     "inputs": [

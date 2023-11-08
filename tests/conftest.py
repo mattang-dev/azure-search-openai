@@ -12,9 +12,7 @@ import openai
 import pytest
 import pytest_asyncio
 from azure.search.documents.aio import SearchClient
-
-import app
-from core.authentication import AuthenticationHelper
+from app.backend.core.authentication import AuthenticationHelper
 
 MockToken = namedtuple("MockToken", ["token", "expires_on"])
 

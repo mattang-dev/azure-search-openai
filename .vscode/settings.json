@@ -18,5 +18,9 @@
     "search.exclude": {
         "**/node_modules": true,
         "static": true
-    }
+    },
+    "python.analysis.extraPaths": [
+        "./app/backend",
+        "./app"
+    ]
 }
